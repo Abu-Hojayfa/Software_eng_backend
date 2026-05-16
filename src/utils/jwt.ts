@@ -1,76 +1,51 @@
 import jwt from 'jsonwebtoken';
+import { Response } from 'express';
 import { IUser } from '../models/User';
+import { JwtPayload } from '../types';
+import { COOKIE } from '../constants';
 
-export interface JwtPayload {
-  userId: string;
-  email: string;
-  role: string;
-}
+// ── Token generation ──────────────────────────────────────────────────────────
 
-/**
- * Generate a short-lived access token (e.g. 7d)
- */
-export const generateAccessToken = (user: IUser): string => {
-  const payload: JwtPayload = {
-    userId: user._id.toString(),
-    email: user.email,
-    role: user.role,
-  };
+const buildPayload = (user: IUser): JwtPayload => ({
+  userId: user._id.toString(),
+  email:  user.email,
+  role:   user.role,
+});
 
-  return jwt.sign(payload, process.env.JWT_SECRET as string, {
-    expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'],
-  });
-};
+export const generateAccessToken = (user: IUser): string =>
+  jwt.sign(
+    buildPayload(user),
+    process.env.JWT_SECRET as string,
+    { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
+  );
 
-/**
- * Generate a long-lived refresh token (e.g. 30d)
- */
-export const generateRefreshToken = (user: IUser): string => {
-  const payload: JwtPayload = {
-    userId: user._id.toString(),
-    email: user.email,
-    role: user.role,
-  };
+export const generateRefreshToken = (user: IUser): string =>
+  jwt.sign(
+    buildPayload(user),
+    process.env.JWT_REFRESH_SECRET as string,
+    { expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '30d') as jwt.SignOptions['expiresIn'] }
+  );
 
-  return jwt.sign(payload, process.env.JWT_REFRESH_SECRET as string, {
-    expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '30d') as jwt.SignOptions['expiresIn'],
-  });
-};
+// ── Token verification ────────────────────────────────────────────────────────
 
-/**
- * Verify an access token and return the decoded payload
- */
-export const verifyAccessToken = (token: string): JwtPayload => {
-  return jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
-};
+export const verifyAccessToken  = (token: string): JwtPayload =>
+  jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
 
-/**
- * Verify a refresh token and return the decoded payload
- */
-export const verifyRefreshToken = (token: string): JwtPayload => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET as string) as JwtPayload;
-};
+export const verifyRefreshToken = (token: string): JwtPayload =>
+  jwt.verify(token, process.env.JWT_REFRESH_SECRET as string) as JwtPayload;
 
-/**
- * Attach refresh token as an HttpOnly cookie
- */
-export const setRefreshTokenCookie = (
-  res: import('express').Response,
-  token: string
-): void => {
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-  res.cookie('refreshToken', token, {
+// ── Cookie helpers ────────────────────────────────────────────────────────────
+
+export const setRefreshTokenCookie = (res: Response, token: string): void => {
+  res.cookie(COOKIE.REFRESH_TOKEN_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure:   process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: thirtyDays,
-    path: '/api/auth/refresh',
+    maxAge:   COOKIE.MAX_AGE_MS,
+    path:     COOKIE.REFRESH_TOKEN_PATH,
   });
 };
 
-/**
- * Clear the refresh token cookie
- */
-export const clearRefreshTokenCookie = (res: import('express').Response): void => {
-  res.clearCookie('refreshToken', { path: '/api/auth/refresh' });
+export const clearRefreshTokenCookie = (res: Response): void => {
+  res.clearCookie(COOKIE.REFRESH_TOKEN_NAME, { path: COOKIE.REFRESH_TOKEN_PATH });
 };
